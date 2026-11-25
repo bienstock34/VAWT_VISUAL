@@ -8,19 +8,6 @@
   *, *::before, *::after { box-sizing: border-box; }   /* padding counts inside widths: nothing overflows the screen */
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
   canvas { display: block; touch-action: none; }
-  .hud {
-    position: fixed; top: 16px; left: 16px;
-    display: flex; gap: 14px; align-items: center;
-    padding: 12px 16px; border-radius: 14px;
-    background: rgba(10, 16, 28, 0.55);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.12);
-    color: #eef3ff; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    user-select: none; pointer-events: none;
-  }
-  .hud h1 { margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
-  .hud .sub { color: #a9b6d3; font-size: 12px; }
-  .hud .wind { color: #9fe3ff; font-weight: 600; }
   .hint {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     padding: 8px 14px; border-radius: 999px; white-space: nowrap;
@@ -33,14 +20,25 @@
   .zoombtn {
     position: fixed; right: 16px; bottom: 16px;
     display: flex; align-items: center; gap: 8px;
-    padding: 9px 14px; border-radius: 999px; cursor: pointer;
+    padding: 12px 20px; border-radius: 999px; cursor: pointer;
     background: rgba(10, 16, 28, 0.5); color: #eef3ff;
     border: 1px solid rgba(255, 255, 255, 0.25);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 600 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
   .zoombtn:hover { background: rgba(30, 44, 70, 0.7); }
+  /* Opening title: shown on the first screen, fades once the first switch is pushed */
+  .title {
+    position: fixed; bottom: 15%; left: 50%; transform: translateX(-50%);   /* over the empty roof, clear of the turbine */
+    width: max-content; max-width: min(1000px, calc(100vw - 48px)); margin: 0;
+    text-align: center; color: #fff; pointer-events: none;
+    font: 700 42px/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.3px;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 28px rgba(0, 0, 0, 0.6);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  .title.hide { opacity: 0; transform: translate(-50%, 16px); }
   /* Control panel: toggle switches (knob left = off, right = on) with a label */
   .controls {
     position: fixed; top: 16px; right: 16px;
@@ -48,32 +46,41 @@
     padding: 0;
   }
   .sw {
-    display: flex; align-items: center; gap: 10px;
-    padding: 6px 2px; border: none; background: none; cursor: pointer;
+    position: relative;                                   /* anchor for the PUSH ME tag */
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 2px; border: none; background: none; cursor: pointer;
     color: #f4f8ff; text-align: left;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6);
-    font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 600 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
   .sw .track {
-    position: relative; flex: none; width: 38px; height: 22px; border-radius: 11px;
+    position: relative; flex: none; width: 50px; height: 28px; border-radius: 14px;
     background: rgba(12, 18, 30, 0.6); transition: background 0.2s;     /* dark track: readable over sky or roof */
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 1px 4px rgba(0, 0, 0, 0.4);
   }
   .sw .knob {
-    position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
     background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: transform 0.2s;
   }
   .sw.on .track { background: #3aa9d8; }
   .sw:disabled { opacity: 0.4; cursor: not-allowed; }
   /* the next step to press glows gently */
   .sw.next .track { animation: nextPulse 1.6s ease-in-out infinite; }
+  /* "Push me >>" tag beside the switch whose turn it is */
+  .sw .pushme {
+    display: none; position: absolute; right: 100%; top: 50%; transform: translateY(-50%);
+    margin-right: 10px; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: #3aa9d8; color: #fff; font-size: 13px; font-weight: 800; letter-spacing: 0.5px;
+    text-transform: uppercase; text-shadow: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  .sw.next .pushme { display: inline-block; }
   @keyframes nextPulse {
     0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 0 0 rgba(159, 227, 255, 0); }
     50%      { box-shadow: inset 0 0 0 1px rgba(159, 227, 255, 0.9), 0 0 10px 2px rgba(159, 227, 255, 0.55); }
   }
   @media (prefers-reduced-motion: reduce) { .sw.next .track { animation: none; } }
-  .sw.on .knob { transform: translateX(16px); }
+  .sw.on .knob { transform: translateX(22px); }
   .caption {
     position: fixed; left: 50%; bottom: 16%; transform: translate(-50%, 12px);
     width: max-content; max-width: min(760px, calc(100vw - 32px));
@@ -98,14 +105,13 @@
   .caption .close:hover { background: rgba(255, 255, 255, 0.22); }
   .caption em { font-style: normal; color: #9fe3ff; }
   @media (max-width: 520px) {
-    .hud { top: 12px; left: 12px; right: 12px; padding: 8px 12px; gap: 10px; }
-    .hud svg { width: 52px; height: 52px; }
-    .controls { top: 96px; right: 12px; }
-    .zoombtn { top: 96px; left: 12px; right: auto; bottom: auto; padding: 7px 12px; font-size: 12px; }
-    .sw { font-size: 12px; padding: 5px 0; gap: 8px; }
-    .sw .track { width: 34px; height: 20px; }
-    .sw .knob { width: 14px; height: 14px; }
-    .sw.on .knob { transform: translateX(14px); }
+    .controls { top: 12px; right: 12px; }
+    .zoombtn { top: 140px; right: 12px; left: auto; bottom: auto; padding: 9px 14px; font-size: 14px; }
+    .sw { font-size: 14px; padding: 7px 0; gap: 10px; }
+    .sw .track { width: 44px; height: 26px; border-radius: 13px; }
+    .sw .knob { width: 20px; height: 20px; }
+    .sw.on .knob { transform: translateX(18px); }
+    .sw .pushme { font-size: 11px; padding: 3px 8px; margin-right: 8px; }
     .caption {
       left: 12px; right: 12px; bottom: 52px; width: auto; max-width: none; max-height: 40vh;
       transform: translateY(12px);
@@ -113,7 +119,8 @@
     }
     .caption.show { transform: none; }
     .caption .close { top: 6px; right: 6px; width: 28px; height: 28px; line-height: 28px; font-size: 18px; }
-    .hint { bottom: 12px; font-size: 11px; white-space: normal; text-align: center; width: calc(100% - 48px); border-radius: 12px; }
+    .hint { bottom: 12px; font-size: 12px; }
+    .title { bottom: 96px; font-size: 28px; }
   }
 </style>
 <script type="importmap">
@@ -125,28 +132,8 @@
 </head>
 <body>
 
-<div class="hud">
-  <!-- Compass: rotates with the camera so the wind arrow always matches what you see -->
-  <svg width="74" height="74" viewBox="-40 -40 80 80" aria-label="Compass">
-    <circle r="36" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.35)" />
-    <g id="rose">
-      <text y="-25" text-anchor="middle" dominant-baseline="middle" fill="#ff8a7a" font-size="11" font-weight="700">N</text>
-      <text y="27" text-anchor="middle" dominant-baseline="middle" fill="#c9d4ec" font-size="10">S</text>
-      <text x="27" text-anchor="middle" dominant-baseline="middle" fill="#c9d4ec" font-size="10">E</text>
-      <text x="-27" text-anchor="middle" dominant-baseline="middle" fill="#9fe3ff" font-size="10" font-weight="700">W</text>
-      <!-- wind blows west -> east -->
-      <line x1="-18" y1="0" x2="12" y2="0" stroke="#9fe3ff" stroke-width="3" stroke-linecap="round" />
-      <path d="M 19 0 L 9 -6 L 9 6 Z" fill="#9fe3ff" />
-    </g>
-  </svg>
-  <div>
-    <h1>Rooftop VAWT</h1>
-    <div class="wind">Wind from the West · 9 m/s at hub</div>
-    <div class="sub">Flow streaks are illustrative, not CFD</div>
-  </div>
-</div>
 <button class="zoombtn" id="zoomBtn">
-  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+  <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="6.5" cy="6.5" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/>
     <line x1="10.3" y1="10.3" x2="14.5" y2="14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     <line x1="4" y1="6.5" x2="9" y2="6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
@@ -154,16 +141,17 @@
   </svg>
   <span id="zoomLabel">Zoom out</span>
 </button>
+<h1 class="title" id="title">Hover Energy Wind Technology Walk&#8209;Through</h1>
 <div class="controls">
-  <button class="sw" id="shroudBtn" role="switch" aria-checked="false"><span class="track"><span class="knob"></span></span>Hover shroud</button>
-  <button class="sw" id="bldBtn"    role="switch" aria-checked="false"><span class="track"><span class="knob"></span></span>Building multiplier</button>
-  <button class="sw" id="arrayBtn"  role="switch" aria-checked="false"><span class="track"><span class="knob"></span></span>Array multiplier</button>
+  <button class="sw" id="shroudBtn" role="switch" aria-checked="false"><span class="pushme">PUSH ME &raquo;</span><span class="track"><span class="knob"></span></span>Add Hover Shroud</button>
+  <button class="sw" id="bldBtn"    role="switch" aria-checked="false"><span class="pushme">PUSH ME &raquo;</span><span class="track"><span class="knob"></span></span>Add Building Multiplier</button>
+  <button class="sw" id="arrayBtn"  role="switch" aria-checked="false"><span class="pushme">PUSH ME &raquo;</span><span class="track"><span class="knob"></span></span>Add Array Multiplier</button>
 </div>
 <div class="caption" id="caption">
   <span id="captionText"></span>
   <button class="close" id="captionClose" aria-label="Close">&times;</button>
 </div>
-<div class="hint" id="hint">Drag to rotate view · Scroll or pinch to zoom · Right-drag / two fingers to pan</div>
+<div class="hint" id="hint">Drag to rotate · Scroll to zoom</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -646,7 +634,15 @@ const insideBuilding = (x, y, z) =>
 function spawn(p, anywhere) {
   let x, y, z;
   do {
-    if (inBuildingView && Math.random() < 0.45) {
+    const r = Math.random();
+    if (shroudTarget && r < 0.55) {
+      // Shroud on: extra streaks released aimed at the shroud intake (any of the five in array
+      // mode). Start heights are ones the building's upwash lifts to rotor height.
+      const c = arrayTarget ? [0, ...ARRAY_Z][Math.floor(Math.random() * 5)] : 0;
+      x = anywhere ? rand(-30, TX + 4) : rand(-30, -24);
+      z = c + rand(-1.7, 1.7);
+      y = rand(12.5, 17.5);
+    } else if (inBuildingView && r < 0.85) {
       // Building / array modes: extra streaks released close in front of the windward face,
       // so many visibly curve up and over the leading edge (or, in array mode, into the rotors)
       x = anywhere ? rand(-36, 10) : rand(-36, -30);
@@ -714,6 +710,12 @@ function windVelocity(x, y, z, t) {
   //      (the shroud is turned 180°, so its flap side is downwind at world +x).
   if (shroudAmt > 0 && y > SH.floorY - 0.3 && y < SH_ROOF_Y + 0.3) {
     const s = shroudAmt, az = Math.abs(zl), sz = Math.sign(zl), xs = TX - x;
+    // upwind of the intake: air in line with the opening is drawn in and starts to speed up
+    if (xs > SH.wallRear && xs < SH.wallRear + 4 && az < SH.wallZ + 1) {
+      const f = 1 - (xs - SH.wallRear) / 4;
+      vz -= sz * U * 0.3 * s * f * (az / (SH.wallZ + 1));
+      vx *= 1 + 0.2 * s * f;
+    }
     // upwind of the walls: flow splits around each wall's blunt leading edge
     if (xs > SH.wallRear && xs < SH.wallRear + 3 && Math.abs(az - SH.wallZ) < 0.9) {
       const f = 1 - (xs - SH.wallRear) / 3;
@@ -721,7 +723,7 @@ function windVelocity(x, y, z, t) {
       vx *= 1 - 0.2 * s * f;
     }
     // between the walls, through the rotor: speeds up
-    if (xs > SH.wallFront && xs < SH.wallRear && az < SH.wallZ - 0.2) vx *= 1 + (0.2 + 0.06 * arrayAmt) * s;
+    if (xs > SH.wallFront && xs < SH.wallRear && az < SH.wallZ - 0.2) vx *= 1 + (0.7 + 0.06 * arrayAmt) * s;   // strong speed-up across the rotor
     // outside the walls: pushed around
     if (xs > SH.wallFront - 0.5 && xs < SH.wallRear + 0.5 && az > SH.wallZ - 0.2 && az < SH.wallZ + 2.5)
       vz += sz * U * 0.35 * s * (1 - (az - SH.wallZ + 0.2) / 2.7);
@@ -744,7 +746,7 @@ function windVelocity(x, y, z, t) {
     const xr = x - TX;                                   // position relative to the rotor axis
     const r = Math.hypot(xr, zl) + 1e-6;
     if (r < ROTOR.R + 0.4) {
-      vx *= 0.7 * (1 + 0.05 * arrayAmt);                 // neighbours feed a little extra inflow
+      vx *= (0.7 + 0.2 * shroudAmt) * (1 + 0.05 * arrayAmt);   // shroud: less slowdown; neighbours: a little extra inflow
       const sw = U * 0.35 * spin;                        // tangential direction of rotation: (zl, 0, -xr)/r
       vx += sw * zl / r;
       vz -= sw * xr / r;
@@ -857,7 +859,6 @@ controls.autoRotateSpeed = 0.5;
 controls.addEventListener('start', () => {
   if (cine) stopCinematic();             // dragging / zooming takes over from the camera move
   controls.autoRotate = false;
-  document.getElementById('hint').style.opacity = '0';
 });
 
 // =====================================================================
@@ -884,6 +885,9 @@ window.addEventListener('resize', () => {
 // 11. ANIMATION LOOP
 // =====================================================================
 const shroudBtn = document.getElementById('shroudBtn');
+// The controls hint stays on screen; touch screens get touch wording
+if (window.matchMedia('(pointer: coarse)').matches)
+  document.getElementById('hint').textContent = 'Swipe to rotate · Pinch to zoom';
 // ---- views ----
 const TURBINE_TARGET  = new THREE.Vector3(0, HUB_Y - 1.5, 0);   // the original close-up view
 const TURBINE_OFFSET  = new THREE.Vector3(-11, 6, 13);
@@ -960,8 +964,10 @@ function setShroud(on) {
 function refreshLocks() {
   bldBtn.disabled   = !shroudTarget && !inBuildingView;
   arrayBtn.disabled = !inBuildingView;
-  bldBtn.title   = bldBtn.disabled   ? 'Turn on Hover shroud first' : '';
-  arrayBtn.title = arrayBtn.disabled ? 'Turn on Building multiplier first' : '';
+  bldBtn.title   = bldBtn.disabled   ? 'Add the Hover Shroud first' : '';
+  arrayBtn.title = arrayBtn.disabled ? 'Add the Building Multiplier first' : '';
+  // the opening title shows only on the starting screen
+  document.getElementById('title').classList.toggle('hide', !!shroudTarget || inBuildingView);
   shroudBtn.classList.toggle('next', !shroudTarget);
   bldBtn.classList.toggle('next', !!shroudTarget && !inBuildingView);
   arrayBtn.classList.toggle('next', inBuildingView && !arrayTarget);
@@ -1137,7 +1143,6 @@ if (params.has('building')) {
   showCaption(arrayTarget ? ARRAY_TEXT : BUILDING_TEXT);
 }
 
-const rose = document.getElementById('rose');
 const clock = new THREE.Clock();
 let t = 3;
 
@@ -1161,9 +1166,6 @@ function animate() {
 
   if (cine) updateCinematic(realDt);
   else controls.update();
-  const tgt = cine ? cine.cur : controls.target;                 // compass follows the camera's heading
-  const az = Math.atan2(camera.position.x - tgt.x, camera.position.z - tgt.z);
-  rose.setAttribute('transform', `rotate(${THREE.MathUtils.radToDeg(az)})`);
 
   composer.render();
 }
