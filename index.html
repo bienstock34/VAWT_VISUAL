@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Rooftop VAWT</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
+  canvas { display: block; touch-action: none; }
+  .hud {
+    position: fixed; top: 16px; left: 16px;
+    display: flex; gap: 14px; align-items: center;
+    padding: 12px 16px; border-radius: 14px;
+    background: rgba(10, 16, 28, 0.55);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #eef3ff; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    user-select: none; pointer-events: none;
+  }
+  .hud h1 { margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
+  .hud .sub { color: #a9b6d3; font-size: 12px; }
+  .hud .wind { color: #9fe3ff; font-weight: 600; }
+  .hint {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    padding: 8px 14px; border-radius: 999px; white-space: nowrap;
+    background: rgba(10, 16, 28, 0.5); color: #c9d4ec;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    pointer-events: none; transition: opacity 1s;
+  }
+  .btn {
+    position: fixed; top: 16px; right: 16px;
+    padding: 11px 18px; border-radius: 12px; cursor: pointer;
+    background: rgba(10, 16, 28, 0.6); color: #eef3ff;
+    border: 1px solid rgba(159, 227, 255, 0.45);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .btn:hover { background: rgba(30, 44, 70, 0.75); }
+  .btn.on { background: rgba(159, 227, 255, 0.22); border-color: #9fe3ff; }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn3 { top: 16px; }                  /* zoom: always shown, top of the stack */
+  #shroudBtn { top: 66px; }
+  .btn2 { top: 116px; }
+  .btn4 { top: 166px; }
+  .caption {
+    position: fixed; left: 50%; bottom: 16%; transform: translate(-50%, 12px);
+    width: max-content; max-width: min(760px, calc(100% - 32px));
+    padding: 16px 24px; border-radius: 16px; text-align: center;
+    background: rgba(10, 16, 28, 0.62);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(159, 227, 255, 0.35);
+    color: #f4f8ff; font: 600 22px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+    padding-right: 52px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .caption.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .caption .close {
+    position: absolute; top: 8px; right: 8px; width: 32px; height: 32px;
+    border: none; border-radius: 50%; cursor: pointer;
+    background: rgba(255, 255, 255, 0.1); color: #dfe8ff;
+    font: 400 20px/32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .caption .close:hover { background: rgba(255, 255, 255, 0.22); }
+  .caption em { font-style: normal; color: #9fe3ff; }
+  @media (max-width: 520px) {
+    .caption { font-size: 16px; bottom: 260px; padding: 12px 16px; padding-right: 48px; }
+    .btn { top: auto; right: auto; bottom: 64px; left: 50%; transform: translateX(-50%); }
+    .btn3 { bottom: 64px; }
+    #shroudBtn { top: auto; bottom: 112px; }
+    .btn2 { bottom: 160px; }
+    .btn4 { bottom: 208px; }
+    .hud { top: 12px; left: 12px; right: 12px; padding: 10px 12px; }
+    .hint { font-size: 11px; white-space: normal; text-align: center; width: calc(100% - 56px); border-radius: 12px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<div class="hud">
+  <!-- Compass: rotates with the camera so the wind arrow always matches what you see -->
+  <svg width="74" height="74" viewBox="-40 -40 80 80" aria-label="Compass">
+    <circle r="36" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.35)" />
+    <g id="rose">
+      <text y="-25" text-anchor="middle" dominant-baseline="middle" fill="#ff8a7a" font-size="11" font-weight="700">N</text>
+      <text y="27" text-anchor="middle" dominant-baseline="middle" fill="#c9d4ec" font-size="10">S</text>
+      <text x="27" text-anchor="middle" dominant-baseline="middle" fill="#c9d4ec" font-size="10">E</text>
+      <text x="-27" text-anchor="middle" dominant-baseline="middle" fill="#9fe3ff" font-size="10" font-weight="700">W</text>
+      <!-- wind blows west -> east -->
+      <line x1="-18" y1="0" x2="12" y2="0" stroke="#9fe3ff" stroke-width="3" stroke-linecap="round" />
+      <path d="M 19 0 L 9 -6 L 9 6 Z" fill="#9fe3ff" />
+    </g>
+  </svg>
+  <div>
+    <h1>Rooftop VAWT</h1>
+    <div class="wind">Wind from the West · 9 m/s at hub</div>
+    <div class="sub">Flow streaks are illustrative, not CFD</div>
+  </div>
+</div>
+<button class="btn" id="shroudBtn">Add Hover shroud</button>
+<button class="btn btn2" id="bldBtn" hidden>Building multiplier</button>
+<button class="btn btn3" id="zoomBtn">Zoom out to building</button>
+<button class="btn btn4" id="arrayBtn" hidden>Array multiplier</button>
+<div class="caption" id="caption">
+  <span id="captionText"></span>
+  <button class="close" id="captionClose" aria-label="Close">&times;</button>
+</div>
+<div class="hint" id="hint">Drag to rotate view · Scroll or pinch to zoom · Right-drag / two fingers to pan</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+
+// =====================================================================
+// 1. PARAMETERS  (units: metres, seconds)
+//    World axes: +x = East (downwind), -z = North, +y = up.
+// =====================================================================
+const WIND_HUB = 9;                         // wind speed at hub height [m/s]
+const SLOWMO   = 0.7;                       // playback speed (1 = real time)
+const BLD   = { halfW: 10, halfD: 28, H: 12 };          // host building: 20 m deep (along the wind), 56 m wide, 12 m tall
+const MAST_H = 3.5;                                     // mast height above roof
+const ROTOR = { R: 1.6, span: 3.2, chord: 0.32, blades: 3, TSR: 2.0 };
+const HUB_Y = BLD.H + MAST_H + ROTOR.span / 2;          // rotor mid-height
+const OMEGA = ROTOR.TSR * WIND_HUB / ROTOR.R;           // rotor speed [rad/s] = TSR*U/R
+
+// =====================================================================
+// 2. RENDERER, SCENE, CAMERA
+// =====================================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 4000);
+camera.position.set(-11, HUB_Y + 4.5, 13);
+
+// Colours are given in linear space (what the shaders work in)
+const lin = (r, g, b) => new THREE.Color().setRGB(r, g, b);
+const HORIZON = lin(0.95, 0.62, 0.42);
+const ZENITH  = lin(0.10, 0.22, 0.52);
+const HAZE    = lin(0.20, 0.17, 0.22);
+
+scene.fog = new THREE.FogExp2(HAZE, 0.0042);
+
+// =====================================================================
+// 3. SKY  — golden-hour gradient dome with a glowing sun
+// =====================================================================
+const sunDir = new THREE.Vector3().setFromSphericalCoords(
+  1, THREE.MathUtils.degToRad(90 - 9), THREE.MathUtils.degToRad(215)); // 9° above horizon, from the SW
+
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: {
+    sunDir:  { value: sunDir },
+    zenith:  { value: ZENITH },
+    horizon: { value: HORIZON },
+    ground:  { value: HAZE },
+  },
+  vertexShader: /* glsl */`
+    varying vec3 vDir;
+    void main() {
+      vDir = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    uniform vec3 sunDir, zenith, horizon, ground;
+    varying vec3 vDir;
+    void main() {
+      vec3 d = normalize(vDir);
+      float h = d.y;
+      vec3 col = h > 0.0 ? mix(horizon, zenith, pow(h, 0.45))
+                         : mix(horizon, ground, pow(min(-h * 6.0, 1.0), 0.6));
+      float s = max(dot(d, normalize(sunDir)), 0.0);
+      col += vec3(1.0, 0.55, 0.25) * (pow(s, 6.0) * 0.45 + pow(s, 60.0) * 0.8);
+      col += vec3(1.0, 0.85, 0.6) * pow(s, 1500.0) * 8.0;        // sun disc
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(1800, 48, 24), skyMat);
+
+// Use the sky as an environment map so metal and blades pick up sky reflections
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.add(sky);
+scene.environment = pmrem.fromScene(envScene, 0.02, 0.1, 4000).texture;
+scene.add(sky);
+
+// =====================================================================
+// 4. LIGHTS
+// =====================================================================
+const sunLight = new THREE.DirectionalLight(0xffd2a6, 3.0);
+sunLight.target.position.set(0, BLD.H, 0);
+sunLight.position.copy(sunDir).multiplyScalar(90).add(sunLight.target.position);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(3072, 3072);
+Object.assign(sunLight.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 250 });
+sunLight.shadow.bias = -0.0004;
+sunLight.shadow.normalBias = 0.03;
+scene.add(sunLight, sunLight.target);
+scene.add(new THREE.HemisphereLight(0x9fb8ff, 0x2a2220, 0.4));
+
+// =====================================================================
+// 5. CITY — host building, rooftop details, neighbours, ground
+// =====================================================================
+
+// Facade texture: draws a grid of windows; some are lit (emissive map)
+function facadeTextures(cols, rows, litFraction) {
+  const cw = 16, ch = 24;
+  const make = () => { const c = document.createElement('canvas'); c.width = cols * cw; c.height = rows * ch; return c; };
+  const base = make(), glow = make();
+  const gb = base.getContext('2d'), gg = glow.getContext('2d');
+  gb.fillStyle = '#5e5953'; gb.fillRect(0, 0, base.width, base.height);
+  gg.fillStyle = '#000';    gg.fillRect(0, 0, glow.width, glow.height);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = c * cw + 3, y = r * ch + 5, w = cw - 6, h = ch - 9;
+    gb.fillStyle = '#2a3140'; gb.fillRect(x, y, w, h);
+    if (Math.random() < litFraction) {
+      gg.fillStyle = ['#ffcf8a', '#ffe2b0', '#fff1d6', '#ffb86b'][Math.floor(Math.random() * 4)];
+      gg.fillRect(x, y, w, h);
+    }
+  }
+  const t1 = new THREE.CanvasTexture(base), t2 = new THREE.CanvasTexture(glow);
+  t1.colorSpace = t2.colorSpace = THREE.SRGBColorSpace;
+  t1.anisotropy = t2.anisotropy = 8;
+  return { map: t1, emissiveMap: t2 };
+}
+
+// Box building with windows on the 4 sides and a plain roof
+function building(w, h, d, x, z, roofMat, lit = 0.25) {
+  const sideTex = facadeTextures(Math.max(2, Math.round(w / 2)), Math.max(1, Math.round(h / 3)), lit);
+  const side = new THREE.MeshStandardMaterial({
+    ...sideTex, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.8, metalness: 0.1 });
+  // BoxGeometry face order: +x, -x, +y (roof), -y, +z, -z
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [side, side, roofMat, roofMat, side, side]);
+  m.position.set(x, h / 2, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+
+// Gravel roof texture (random speckle)
+const gravel = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#6b6862'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 6000; i++) {
+    const v = 80 + Math.random() * 90;
+    g.fillStyle = `rgb(${v},${v - 4},${v - 10})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+const roofMat     = new THREE.MeshStandardMaterial({ map: gravel, roughness: 0.95 });
+const darkRoofMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3e, roughness: 0.9 });
+const concrete    = new THREE.MeshStandardMaterial({ color: 0x9c958c, roughness: 0.85 });
+const steel       = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.35, metalness: 0.85 });
+const darkSteel   = new THREE.MeshStandardMaterial({ color: 0x3c4148, roughness: 0.5,  metalness: 0.7 });
+
+// Host building
+building(BLD.halfW * 2, BLD.H, BLD.halfD * 2, 0, 0, roofMat, 0.35);
+
+// Parapet wall around the roof edge
+function box(w, h, d, x, y, z, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+const P = 0.3, PH = 1.0;
+box(BLD.halfW * 2 + P, PH, P, 0, BLD.H + PH / 2,  BLD.halfD, concrete);
+box(BLD.halfW * 2 + P, PH, P, 0, BLD.H + PH / 2, -BLD.halfD, concrete);
+box(P, PH, BLD.halfD * 2, BLD.halfW, BLD.H + PH / 2, 0, concrete);
+box(P, PH, BLD.halfD * 2, -BLD.halfW, BLD.H + PH / 2, 0, concrete);
+
+// Rooftop clutter: HVAC units, stair housing
+box(3.0, 1.6, 2.2,  2.0, BLD.H + 0.8,  7.5, darkSteel);
+box(2.2, 1.2, 2.2,  6.5, BLD.H + 0.6,  5.0, darkSteel);
+box(3.5, 2.8, 3.0, 6.0, BLD.H + 1.4, -16.0, concrete);   // stair housing, kept clear of the turbine row
+for (const [x, z] of [[2.0, 7.5], [6.5, 5.0]]) {   // fan grilles on top of HVAC units
+  const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.08, 24), steel);
+  fan.position.set(x, BLD.H + (x < 5 ? 1.64 : 1.24), z);
+  scene.add(fan);
+}
+
+// Neighbouring city blocks (seeded so the layout is the same every load)
+let seed = 7;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+for (let gx = -6; gx <= 6; gx++) for (let gz = -6; gz <= 6; gz++) {
+  const x = gx * 34 + (rnd() - 0.5) * 6, z = gz * 34 + (rnd() - 0.5) * 6;
+  if (Math.hypot(x, z) < 40 || rnd() < 0.25) continue;      // keep the area around the turbine open
+  if (Math.abs(x) < BLD.halfW + 20 && Math.abs(z) < BLD.halfD + 20) continue;   // and clear of the wide host building
+  const w = 12 + rnd() * 12, d = 12 + rnd() * 12, h = 8 + rnd() * rnd() * 45;
+  building(w, h, d, x, z, darkRoofMat, 0.2 + rnd() * 0.25);
+}
+
+// Ground and streets
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000),
+  new THREE.MeshStandardMaterial({ color: 0x2b2b2f, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// =====================================================================
+// 6. THE TURBINE  — 3-bladed H-type Darrieus on a rooftop mast
+// =====================================================================
+
+// NACA 00xx symmetric airfoil outline, centred on mid-chord
+function airfoilShape(chord, t = 0.18, n = 40) {
+  const yt = x => 5 * t * (0.2969 * Math.sqrt(x) - 0.126 * x - 0.3516 * x * x
+                           + 0.2843 * x ** 3 - 0.1036 * x ** 4);   // closed trailing edge
+  const s = new THREE.Shape();
+  for (let i = n; i >= 0; i--) {                       // upper surface: TE -> LE
+    const x = (1 - Math.cos(Math.PI * i / n)) / 2;
+    const px = x * chord - chord / 2, py = yt(x) * chord;
+    i === n ? s.moveTo(px, py) : s.lineTo(px, py);
+  }
+  for (let i = 1; i <= n; i++) {                       // lower surface: LE -> TE
+    const x = (1 - Math.cos(Math.PI * i / n)) / 2;
+    s.lineTo(x * chord - chord / 2, -yt(x) * chord);
+  }
+  return s;
+}
+
+const bladeMat = new THREE.MeshPhysicalMaterial({
+  color: 0xf4f6f8, roughness: 0.28, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.15 });
+
+const bladeGeo = new THREE.ExtrudeGeometry(airfoilShape(ROTOR.chord),
+  { depth: ROTOR.span, bevelEnabled: false, curveSegments: 1 });
+bladeGeo.translate(0, 0, -ROTOR.span / 2);
+bladeGeo.rotateX(-Math.PI / 2);   // extrusion axis -> vertical
+bladeGeo.rotateY(-Math.PI / 2);   // chord -> tangential, leading edge facing the direction of rotation
+bladeGeo.computeVertexNormals();
+
+// Everything that moves with the turbine (rotor, mast, generator, shroud) lives in `rig`.
+// TX = the rig's x position. 0 = centre of the roof; EDGE_TX = at the upwind (west) edge.
+const rig = new THREE.Group();
+scene.add(rig);
+let TX = 0;
+const EDGE_TX = -7.0;
+
+const rotor = new THREE.Group();
+rotor.position.y = HUB_Y;
+rig.add(rotor);
+
+for (let i = 0; i < ROTOR.blades; i++) {
+  const arm = new THREE.Group();
+  arm.rotation.y = (i * 2 * Math.PI) / ROTOR.blades;
+  rotor.add(arm);
+
+  const blade = new THREE.Mesh(bladeGeo, bladeMat);
+  blade.position.x = ROTOR.R;
+  blade.castShadow = true;
+  arm.add(blade);
+
+  for (const sy of [-0.28, 0.28]) {                    // two struts per blade
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(ROTOR.R, 0.05, 0.14), steel);
+    strut.position.set(ROTOR.R / 2, sy * ROTOR.span, 0);
+    strut.castShadow = true;
+    arm.add(strut);
+  }
+}
+// Central shaft and hub collars (spin with the rotor)
+const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, ROTOR.span * 0.7, 16), steel);
+shaft.castShadow = true;
+rotor.add(shaft);
+for (const sy of [-0.28, 0.28]) {
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.16, 24), darkSteel);
+  collar.position.y = sy * ROTOR.span;
+  rotor.add(collar);
+}
+
+// Static parts: generator housing, mast, base plate
+const genY = BLD.H + MAST_H - 0.05;
+const gen = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.6, 32), darkSteel);
+gen.position.y = genY;
+gen.castShadow = true;
+rig.add(gen);
+const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, MAST_H, 24), steel);
+mast.position.y = BLD.H + MAST_H / 2;
+mast.castShadow = true;
+rig.add(mast);
+rig.add(box(1.2, 0.12, 1.2, 0, BLD.H + 0.06, 0, darkSteel));
+
+// =====================================================================
+// 6b. HOVER SHROUD  — sized from the 1:20 model drawings (20261112), full scale.
+//     Geometry below is written in the shroud's own frame, flap side at -x.
+//     The group is then turned 180° about the rotor axis so the blunt wall
+//     edges face the wind (west) and the flaps trail downwind (east).
+//     Rotor axis is at x = 0, z = 0.
+// =====================================================================
+const SH = {
+  floorY: BLD.H + MAST_H - 0.12,       // top of floor plate (just under the blade tips)
+  height: ROTOR.span + 0.35,           // floor to roof
+  floorFront: -1.2, floorRear: 1.9,    // floor extent along the wind (rotor sits forward of centre)
+  roofFront: -1.7,  roofRear: 1.9,
+  halfWidth: 2.17,                     // floor/roof are 4.33 m across
+  wallZ: 1.99, wallT: 0.37,            // wall centreline and max thickness
+  wallRear: 1.6, wallFront: -1.55,     // wall: blunt end at the rear, thin tail at the front
+  boomRoot: { x: -1.19, z: 1.28 },     // booms run from the floor/roof front corners...
+  boomTip:  { x: -2.86, z: 3.39 },     // ...out to here (about 2.7 m, ~52° off the wind axis)
+  flapChord: 0.55, flapLouver: 0.26,   // flap size and louver angle [rad]
+};
+const SH_ROOF_Y = SH.floorY + SH.height;
+
+const shroud = new THREE.Group();
+shroud.rotation.y = Math.PI;          // flaps downwind, blunt wall edges into the wind
+shroud.visible = false;
+rig.add(shroud);
+
+// Materials (kept in a list so the whole shroud can fade in and out)
+const shroudMat = new THREE.MeshStandardMaterial({ color: 0xc8cdd3, metalness: 0.5, roughness: 0.42, side: THREE.DoubleSide });
+const flapMat   = new THREE.MeshStandardMaterial({ color: 0xaeb4bb, metalness: 0.5, roughness: 0.4,  side: THREE.DoubleSide });
+const boomMat   = new THREE.MeshStandardMaterial({ color: 0x6f757d, metalness: 0.6, roughness: 0.45 });
+const shroudMats = [shroudMat, flapMat, boomMat];
+
+function addToShroud(mesh) {
+  mesh.castShadow = mesh.receiveShadow = true;
+  shroud.add(mesh);
+  return mesh;
+}
+
+// A vertical prism from a plan-view outline. pts = [[x, z], ...] in world metres.
+function prismFromPlan(pts, y0, h, mat) {
+  const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 1 });
+  geo.rotateX(-Math.PI / 2);           // shape plane -> horizontal, extrusion -> up
+  geo.translate(0, y0, 0);
+  geo.computeVertexNormals();
+  return addToShroud(new THREE.Mesh(geo, mat));
+}
+
+// Floor and roof plates, each with a lip bent down at the rear
+function plateWithLip(x0, x1, yTop, t) {
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, t, 2 * SH.halfWidth), shroudMat);
+  plate.position.set((x0 + x1) / 2, yTop - t / 2, 0);
+  addToShroud(plate);
+  const LIP = 0.5, ANG = 0.45;         // lip length [m] and droop [rad]
+  const lip = new THREE.Mesh(new THREE.BoxGeometry(LIP, t * 0.7, 2 * SH.halfWidth), shroudMat);
+  lip.rotation.z = -ANG;
+  lip.position.set(x1 + (LIP / 2) * Math.cos(ANG), yTop - t / 2 - (LIP / 2) * Math.sin(ANG), 0);
+  addToShroud(lip);
+}
+plateWithLip(SH.floorFront, SH.floorRear, SH.floorY, 0.1);
+plateWithLip(SH.roofFront,  SH.roofRear,  SH_ROOF_Y + 0.08, 0.08);
+
+// Side walls: thick airfoil section, blunt edge at the rear, tail flaring outward at the front
+for (const side of [-1, 1]) {
+  const n = 40, t = SH.wallT / (SH.wallRear - SH.wallFront), chord = SH.wallRear - SH.wallFront;
+  const outer = [], inner = [];
+  for (let i = 0; i <= n; i++) {
+    const s = (1 - Math.cos(Math.PI * i / n)) / 2;              // 0 = rear (blunt), 1 = front (tail)
+    const half = 5 * t * chord * (0.2969 * Math.sqrt(s) - 0.126 * s - 0.3516 * s * s
+                                  + 0.2843 * s ** 3 - 0.1036 * s ** 4);
+    const zc = SH.wallZ + 0.22 * s ** 3;                        // camber line bends outward at the front
+    const x = SH.wallRear - s * chord;
+    outer.push([x, side * (zc + half)]);
+    inner.push([x, side * (zc - half)]);
+  }
+  prismFromPlan([...outer, ...inner.reverse()], SH.floorY, SH.height, shroudMat);
+}
+
+// Booms (top and bottom) and 4 curved flaps per side
+for (const side of [-1, 1]) {
+  const ax = SH.boomRoot.x, az = side * SH.boomRoot.z;
+  const bx = SH.boomTip.x,  bz = side * SH.boomTip.z;
+  const len = Math.hypot(bx - ax, bz - az);
+  const yaw = Math.atan2(-(bz - az), bx - ax);                  // rotation that points +x along the boom
+
+  for (const y of [SH.floorY - 0.08, SH_ROOF_Y - 0.06]) {
+    const boom = new THREE.Mesh(new THREE.BoxGeometry(len + 0.3, 0.14, 0.2), boomMat);
+    boom.position.set((ax + bx) / 2, y, (az + bz) / 2);
+    boom.rotation.y = yaw;
+    addToShroud(boom);
+  }
+
+  // Flap section: thin cambered plate, chord centred on its pivot
+  const c = SH.flapChord, pts = [];
+  for (let i = 0; i <= 16; i++) { const s = i / 16; pts.push([(s - 0.5) * c, 0.07 * c * 4 * s * (1 - s) + 0.012]); }
+  for (let i = 16; i >= 0; i--) { const s = i / 16; pts.push([(s - 0.5) * c, 0.07 * c * 4 * s * (1 - s) - 0.012]); }
+  const flapShape = new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v * side)));
+  const flapGeo = new THREE.ExtrudeGeometry(flapShape, { depth: SH.height - 0.2, bevelEnabled: false });
+  flapGeo.rotateX(-Math.PI / 2);
+  flapGeo.computeVertexNormals();
+
+  for (const f of [0.17, 0.39, 0.61, 0.83]) {
+    const flap = new THREE.Mesh(flapGeo, flapMat);
+    flap.position.set(ax + f * (bx - ax), SH.floorY + 0.02, az + f * (bz - az));
+    flap.rotation.y = yaw + side * SH.flapLouver;
+    addToShroud(flap);
+  }
+}
+
+// =====================================================================
+// 6c. ARRAY  — 4 more turbines (copies of the rig) for the array-multiplier view.
+//     Spacing is 3 rotor diameters, centre to centre. Neighbours counter-rotate.
+// =====================================================================
+const ARRAY_SPACING = 3 * 2 * ROTOR.R;                      // 3 D = 9.6 m
+const ARRAY_Z = [-2, -1, 1, 2].map(k => k * ARRAY_SPACING);  // the centre turbine (z = 0) is the main rig
+const spinAt = z => (Math.round(Math.abs(z) / ARRAY_SPACING) % 2 === 1 ? -1 : 1);   // +1 / -1 alternating
+rotor.name = 'rotor';
+shroud.name = 'shroud';
+const extraRigs = ARRAY_Z.map(z => {
+  const r = rig.clone();                                   // shares geometry and materials with the main rig
+  r.position.set(EDGE_TX, 0, z);
+  r.visible = false;
+  r.userData = { z, spin: spinAt(z), rotor: r.getObjectByName('rotor'), shroud: r.getObjectByName('shroud') };
+  if (r.userData.spin < 0) r.userData.rotor.scale.z = -1;  // mirror blades so leading edges face the other way
+  scene.add(r);
+  return r;
+});
+const allShrouds = [shroud, ...extraRigs.map(r => r.userData.shroud)];
+
+// =====================================================================
+// 7. WINDSOCK  — on the upwind corner of the roof, points downwind
+// =====================================================================
+const sockTex = (() => {
+  const c = document.createElement('canvas'); c.width = 8; c.height = 80;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 5; i++) { g.fillStyle = i % 2 ? '#f4f4f4' : '#ff5a1f'; g.fillRect(0, i * 16, 8, 16); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const SOCK_L = 1.8;
+const sockGeo = new THREE.CylinderGeometry(0.14, 0.32, SOCK_L, 24, 6, true);
+sockGeo.rotateZ(-Math.PI / 2);        // lie along +x, wide end at the pole
+sockGeo.translate(SOCK_L / 2, 0, 0);
+const sock = new THREE.Mesh(sockGeo, new THREE.MeshStandardMaterial({
+  map: sockTex, side: THREE.DoubleSide, roughness: 0.7, emissive: 0x401000, emissiveIntensity: 0.4 }));
+sock.castShadow = true;
+
+const sockPole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 3.2, 12), steel);
+sockPole.position.set(-8.5, BLD.H + 1.6, 26.0);
+sockPole.castShadow = true;
+scene.add(sockPole);
+const sockPivot = new THREE.Group();
+sockPivot.position.set(-8.5, BLD.H + 3.1, 26.0);
+sockPivot.add(sock);
+scene.add(sockPivot);
+
+// =====================================================================
+// 8. WIND STREAKS
+//    N tracer particles ride a simple hand-built flow field. Each keeps
+//    its last L positions; we draw those as a glowing tail that fades out.
+// =====================================================================
+let shroudAmt = 0;        // 0 = no shroud, 1 = shroud fully in place (animated by the button)
+let shroudTarget = 0;
+let arrayAmt = 0;         // 0 = single turbine, 1 = all five in place (animated by the array button)
+let arrayTarget = 0;
+
+// Flow near the turbines is computed relative to the NEAREST turbine in the row.
+// Returns z relative to that turbine's axis, and sets nearSpin to its rotation direction.
+let nearSpin = 1;
+function localZ(z) {
+  let best = z; nearSpin = 1;
+  if (arrayAmt > 0.5) for (const c of ARRAY_Z) if (Math.abs(z - c) < Math.abs(best)) { best = z - c; nearSpin = spinAt(c); }
+  return best;
+}
+let inBuildingView = false;     // building / array multiplier modes (declared here: spawn() reads it)
+const N = 210, L = 44;                        // 30% fewer streaks than version 3 (was 300)
+const STREAK_SPEED = 0.9;                     // streaks drift 10% slower than the wind they show (rotor unaffected)
+const REC_DT = 0.02 / STREAK_SPEED;           // sim-seconds between stored trail points: keeps trails the same length on screen
+let recAcc = 0;
+const hist   = new Float32Array(N * L * 3);   // position history per particle (index 0 = newest)
+const age    = new Float32Array(N);
+const bright = new Float32Array(N);
+const glowHist = new Float32Array(N * L);     // 0..1 per trail point: how much it glows (1 = inside the shroud)
+const falloff = Array.from({ length: L }, (_, k) => Math.pow(1 - k / (L - 1), 1.6));
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const insideBuilding = (x, y, z) =>
+  Math.abs(x) < BLD.halfW + 0.2 && Math.abs(z) < BLD.halfD + 0.2 && y < BLD.H + PH + 0.2;
+
+function spawn(p, anywhere) {
+  let x, y, z;
+  do {
+    if (inBuildingView && Math.random() < 0.45) {
+      // Building / array modes: extra streaks released close in front of the windward face,
+      // so many visibly curve up and over the leading edge (or, in array mode, into the rotors)
+      x = anywhere ? rand(-36, 10) : rand(-36, -30);
+      if (arrayTarget && Math.random() < 0.6) {
+        const c = [0, ...ARRAY_Z][Math.floor(Math.random() * 5)];   // pick one of the five turbines
+        z = c + rand(-2.5, 2.5);
+        y = rand(11, 17);                       // the building's upwash lifts these to hub height at the rotors
+      } else {
+        z = rand(-BLD.halfD + 2, BLD.halfD - 2);
+        y = rand(BLD.H - 6, BLD.H + 3);         // low on the face: pushed up and squeezed over the edge
+      }
+    } else {
+      const focus = Math.random() < 0.6;        // 60% of streaks aimed at the rooftop/turbine zone
+      x = anywhere ? rand(-60, 45) : rand(-64, -56);
+      y = focus ? rand(BLD.H - 3, HUB_Y + 5) : rand(0.8, 38);
+      const fz = arrayTarget ? 26 : 9;          // array mode: cover the whole row of turbines
+      z = focus ? rand(-fz, fz) : rand(-38, 38);
+    }
+  } while (insideBuilding(x, y, z));
+  for (let k = 0; k < L; k++) hist.set([x, y, z], (p * L + k) * 3);
+  glowHist.fill(0, p * L, p * L + L);
+  age[p] = 0;
+  bright[p] = rand(0.3, 1.0);
+}
+for (let p = 0; p < N; p++) spawn(p, true);
+
+// The flow field. Each block is a rough, hand-tuned effect — enough to read
+// the flow pattern, not a solution of the Navier–Stokes equations.
+const vel = { x: 0, y: 0, z: 0 };
+function windVelocity(x, y, z, t) {
+  const { halfW, halfD, H } = BLD;
+  const U = WIND_HUB * Math.pow(Math.max(y, 0.5) / HUB_Y, 0.2);   // power-law shear profile (α = 0.2, urban-ish)
+  let vx = U, vy = 0, vz = 0;
+
+  // (a) Upwind face: flow slows, rises over and spills around the building
+  const d = -halfW - x;                                  // distance upwind of the west face
+  if (d > 0 && d < 10 && Math.abs(z) < halfD + 3 && y < H + 5) {
+    const f = 1 - d / 10;
+    const g = y < H ? 1 : 1 - (y - H) / 5;
+    vx *= 1 - 0.6 * f * g;
+    vy += U * 1.4 * f * f * g;
+    vz += Math.sign(z) * U * 0.6 * f * f * g * (y < H ? 1 : 0.3);
+  }
+  // (b) Over the roof: speed-up layer near the roof, still lifting at the front edge
+  if (Math.abs(x) < halfW && Math.abs(z) < halfD && y > H && y < H + 6) {
+    const h = (y - H) / 6;
+    vx *= 1 + 0.25 * (1 - h);
+    vy += U * 0.15 * (1 - (x + halfW) / (2 * halfW)) * (1 - h);
+  }
+  // (b2) Leading-edge jet: air squeezed over the front of the roof speeds up most just past the edge
+  if (Math.abs(z) < halfD && y > H && y < H + 5 && x > -halfW - 3 && x < -halfW + 8) {
+    const xr = x + halfW;                                // 0 at the edge
+    const k = xr < 0 ? 1 + xr / 3 : 1 - xr / 8;          // ramps up to the edge, decays over the roof
+    vx *= 1 + 0.35 * k * (1 - (y - H) / 5);
+  }
+  // (c) Building wake: slower, sinking, closing in behind
+  if (x > halfW && x < halfW + 30 && Math.abs(z) < halfD + 2 && y < H + 2) {
+    const w = 1 - (x - halfW) / 30;
+    vx *= 1 - 0.5 * w;
+    vy -= U * 0.15 * w;
+    vz -= Math.sign(z) * U * 0.2 * w;
+  }
+  const zl = localZ(z), spin = nearSpin;                // z relative to the nearest turbine
+  // (d0) Shroud (fades in with shroudAmt). xs = position in the shroud's own frame
+  //      (the shroud is turned 180°, so its flap side is downwind at world +x).
+  if (shroudAmt > 0 && y > SH.floorY - 0.3 && y < SH_ROOF_Y + 0.3) {
+    const s = shroudAmt, az = Math.abs(zl), sz = Math.sign(zl), xs = TX - x;
+    // upwind of the walls: flow splits around each wall's blunt leading edge
+    if (xs > SH.wallRear && xs < SH.wallRear + 3 && Math.abs(az - SH.wallZ) < 0.9) {
+      const f = 1 - (xs - SH.wallRear) / 3;
+      vz += Math.sign(az - SH.wallZ || 1) * sz * U * 0.6 * s * f;
+      vx *= 1 - 0.2 * s * f;
+    }
+    // between the walls, through the rotor: speeds up
+    if (xs > SH.wallFront && xs < SH.wallRear && az < SH.wallZ - 0.2) vx *= 1 + (0.2 + 0.06 * arrayAmt) * s;
+    // outside the walls: pushed around
+    if (xs > SH.wallFront - 0.5 && xs < SH.wallRear + 0.5 && az > SH.wallZ - 0.2 && az < SH.wallZ + 2.5)
+      vz += sz * U * 0.35 * s * (1 - (az - SH.wallZ + 0.2) / 2.7);
+    // downwind, between the flap booms: flow spreads out and slows (diffuser)
+    if (xs < SH.floorFront && xs > SH.boomTip.x - 1.5) {
+      const k = Math.min(1, Math.max(0, (xs - SH.boomTip.x) / (SH.boomRoot.x - SH.boomTip.x)));
+      const zb = SH.boomTip.z + (SH.boomRoot.z - SH.boomTip.z) * k;   // half-width between booms here
+      if (az < zb) { vz += sz * U * 0.35 * s * (az / zb); vx *= 1 - 0.15 * s; }
+    }
+  }
+  // (d1) Array: air spilled off each rotor's flank is squeezed through the gap
+  //      to the neighbour and speeds up a little (realistic gains are small)
+  if (arrayAmt > 0 && y > SH.floorY - 0.3 && y < SH_ROOF_Y + 0.3) {
+    const xs = TX - x, azl = Math.abs(zl);
+    if (xs > SH.wallFront - 1 && xs < SH.wallRear + 3 && azl > SH.wallZ + 0.2 && azl < ARRAY_SPACING / 2)
+      vx *= 1 + 0.15 * arrayAmt;
+  }
+  // (d) Rotor: momentum loss through the rotor, swirl, and a wake downstream
+  if (Math.abs(y - HUB_Y) < ROTOR.span / 2 + 0.3) {
+    const xr = x - TX;                                   // position relative to the rotor axis
+    const r = Math.hypot(xr, zl) + 1e-6;
+    if (r < ROTOR.R + 0.4) {
+      vx *= 0.7 * (1 + 0.05 * arrayAmt);                 // neighbours feed a little extra inflow
+      const sw = U * 0.35 * spin;                        // tangential direction of rotation: (zl, 0, -xr)/r
+      vx += sw * zl / r;
+      vz -= sw * xr / r;
+    } else if (xr > 0 && xr < 18 && Math.abs(zl) < ROTOR.R + 0.4) {
+      vx *= 0.7 + 0.3 * (xr / 18);
+    }
+  }
+  // (e) Turbulence: a few travelling sine waves
+  const tb = 0.08 * U;
+  vx += tb * Math.sin(0.9 * y + 1.3 * t + 0.3 * z);
+  vy += tb * Math.sin(0.7 * x + 1.7 * t + 0.5 * z);
+  vz += tb * Math.sin(0.8 * x + 1.1 * t + 0.4 * y);
+
+  vel.x = vx; vel.y = vy; vel.z = vz;
+}
+
+// Fat-line geometry: (L-1) segments per particle
+const segPos = new Float32Array(N * (L - 1) * 6);
+const segCol = new Float32Array(N * (L - 1) * 6);
+const lineGeo = new LineSegmentsGeometry();
+lineGeo.setPositions(segPos);
+lineGeo.setColors(segCol);
+const lineMat = new LineMaterial({
+  vertexColors: true, linewidth: 2.16, transparent: true, opacity: 0.6,  // 20% thicker than v3 (1.8); 60% opacity
+  blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+lineMat.resolution.set(window.innerWidth, window.innerHeight);
+const streaks = new LineSegments2(lineGeo, lineMat);
+streaks.frustumCulled = false;
+scene.add(streaks);
+const posBuf = lineGeo.attributes.instanceStart.data;       // shared buffer we rewrite each frame
+const colBuf = lineGeo.attributes.instanceColorStart.data;
+
+const STREAK_RGB = [0.40, 0.44, 0.48];                       // dull grey-blue, well below the bloom threshold
+const GLOW_BOOST = 2.2;                                       // brightness multiplier added inside the shroud
+
+// How much a point glows: ramps up entering the intake, full between the walls,
+// fades out through the flaps. Uses the shroud's own frame (xs = TX - x, it is turned 180°).
+
+// True if a point is inside one of the shroud's solid side walls
+function hitsShroudWall(x, y, z) {
+  const xs = TX - x, zl = localZ(z);
+  return shroudAmt > 0.5 && y > SH.floorY && y < SH_ROOF_Y && xs > SH.wallFront && xs < SH.wallRear
+         && Math.abs(Math.abs(zl) - SH.wallZ) < SH.wallT / 2;
+}
+function shroudGlow(x, y, z) {
+  if (shroudAmt === 0 || y < SH.floorY || y > SH_ROOF_Y || Math.abs(localZ(z)) > SH.wallZ) return 0;
+  const xs = TX - x;
+  const enter = Math.min(1, Math.max(0, (SH.wallRear + 1.5 - xs) / 1.5));
+  const leave = Math.min(1, Math.max(0, (xs - SH.boomTip.x) / (SH.floorFront - SH.boomTip.x)));
+  return shroudAmt * Math.min(enter, leave);
+}
+
+function updateStreaks(dt, t) {
+  const pa = posBuf.array, ca = colBuf.array;
+  // Store a new trail point every REC_DT of sim time (so trail length doesn't depend on frame rate)
+  recAcc += dt;
+  const shift = recAcc >= REC_DT;
+  if (shift) recAcc %= REC_DT;
+  for (let p = 0; p < N; p++) {
+    const b = p * L * 3;
+    if (shift) {                                              // shift history back one slot
+      hist.copyWithin(b + 3, b, b + (L - 1) * 3);
+      glowHist.copyWithin(p * L + 1, p * L, p * L + L - 1);
+    }
+
+    let x = hist[b], y = hist[b + 1], z = hist[b + 2];
+    windVelocity(x, y, z, t);
+    const sdt = dt * STREAK_SPEED;
+    x += vel.x * sdt; y += vel.y * sdt; z += vel.z * sdt;
+    hist[b] = x; hist[b + 1] = y; hist[b + 2] = z;
+    glowHist[p * L] = shroudGlow(x, y, z);
+    age[p] += dt;
+
+    const hitsWall = hitsShroudWall(x, y, z);
+    if (x > 58 || y > 60 || y < 0.3 || Math.abs(z) > 60 || insideBuilding(x, y, z) || hitsWall) spawn(p, false);
+
+    // fade in after spawning, fade out near the far edge
+    const fade = Math.min(1, age[p] / 0.8) * Math.min(1, Math.max(0, (58 - hist[b]) / 12)) * bright[p];
+
+    const s = p * (L - 1) * 6;
+    for (let k = 0; k < L - 1; k++) {
+      const o = s + k * 6, h0 = b + k * 3, h1 = h0 + 3;
+      pa[o] = hist[h0]; pa[o + 1] = hist[h0 + 1]; pa[o + 2] = hist[h0 + 2];
+      pa[o + 3] = hist[h1]; pa[o + 4] = hist[h1 + 1]; pa[o + 5] = hist[h1 + 2];
+      const g0 = 1 + GLOW_BOOST * glowHist[p * L + k], g1 = 1 + GLOW_BOOST * glowHist[p * L + k + 1];
+      const a0 = falloff[k] * fade * g0, a1 = falloff[k + 1] * fade * g1;
+      ca[o] = STREAK_RGB[0] * a0; ca[o + 1] = STREAK_RGB[1] * a0; ca[o + 2] = STREAK_RGB[2] * a0;
+      ca[o + 3] = STREAK_RGB[0] * a1; ca[o + 4] = STREAK_RGB[1] * a1; ca[o + 5] = STREAK_RGB[2] * a1;
+    }
+  }
+  posBuf.needsUpdate = true;
+  colBuf.needsUpdate = true;
+}
+
+// Pre-run the flow for ~3 s so the streaks are already fully formed on the first frame
+for (let i = 0; i < 150; i++) updateStreaks(0.02, i * 0.02);
+
+// =====================================================================
+// 9. CAMERA CONTROLS  — click/touch and drag to orbit
+// =====================================================================
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, HUB_Y - 1.5, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 5;
+controls.maxDistance = 140;
+controls.maxPolarAngle = Math.PI * 0.495;                  // don't go below the ground
+controls.autoRotate = true;                                 // slow showcase spin until the user touches it
+controls.autoRotateSpeed = 0.5;
+controls.addEventListener('start', () => {
+  if (cine) stopCinematic();             // dragging / zooming takes over from the camera move
+  controls.autoRotate = false;
+  document.getElementById('hint').style.opacity = '0';
+});
+
+// =====================================================================
+// 10. POST-PROCESSING  — bloom makes the streaks, sun and windows glow
+// =====================================================================
+const pr = renderer.getPixelRatio();
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(
+  window.innerWidth * pr, window.innerHeight * pr, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.95);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  lineMat.resolution.set(w, h);
+});
+
+// =====================================================================
+// 11. ANIMATION LOOP
+// =====================================================================
+const shroudBtn = document.getElementById('shroudBtn');
+// ---- views ----
+const TURBINE_TARGET  = new THREE.Vector3(0, HUB_Y - 1.5, 0);   // the original close-up view
+const TURBINE_OFFSET  = new THREE.Vector3(-11, 6, 13);
+const BUILDING_TARGET = new THREE.Vector3(-4, 12, 0);           // whole-building view, orbits the building
+const BUILDING_OFFSET = new THREE.Vector3(-6, 16, 44);           // from the south, raised to look over the roof edge
+const ZOOM_IN_OFFSET  = new THREE.Vector3(-9, 3, 8);            // close on the turbine (upwind, a little above): rotor clearly visible
+const OVERVIEW_TARGET = new THREE.Vector3(-2, 10, 0);            // whole building, turbine small
+const OVERVIEW_OFFSET = new THREE.Vector3(-48, 42, 16);          // upwind and high (clear of the neighbouring towers)
+const ZOOM_TIME = 1.5;                                           // seconds
+const ARRAY_TARGET = new THREE.Vector3(EDGE_TX + 2, HUB_Y - 2, 0);   // the whole row of five
+const ARRAY_OFFSET = new THREE.Vector3(-40, 14, 9);              // upwind, just above the roof: shows streaks curving up the face into the rotors
+
+const SHROUD_TEXT = 'The proprietary shroud pulls wind across the rotor, increasing power output by <em>2.4x</em>';
+const BUILDING_TEXT = 'The building acts as a wind blockage, and the air must get around it. ' +
+  'Wind is forced up the face and squeezed over the front of the rooftop of the building. ' +
+  'By conservation of mass, the same amount of air passing through a narrower path must speed up. ' +
+  'This is the <em>“building multiplier effect”</em>.';
+const ARRAY_TEXT = 'Turbines side by side help each other. Each rotor is a partial blockage: air spilling off ' +
+  'one rotor\u2019s flank is pushed into its neighbor, and air squeezed through the gap between them speeds up. ' +
+  'Spinning rotors also induce flow on their neighbors, adding to or subtracting from their inflow depending on ' +
+  'rotation direction. This is the <em>“array multiplier effect”</em>.';
+
+const bldBtn = document.getElementById('bldBtn');
+const zoomBtn = document.getElementById('zoomBtn');
+const arrayBtn = document.getElementById('arrayBtn');
+let zoomedIn = true;                                             // close on the turbine (true) vs. whole building (false); the first view counts as zoomed in
+
+function updateZoomBtn() {
+  zoomBtn.textContent = zoomedIn ? 'Zoom out to building' : 'Zoom in on turbine';
+  arrayBtn.hidden = !inBuildingView;
+  arrayBtn.textContent = arrayTarget ? 'Single turbine' : 'Array multiplier';
+  arrayBtn.classList.toggle('on', !!arrayTarget);
+}
+const zoomedOutView = () => arrayTarget ? [ARRAY_TARGET, ARRAY_OFFSET] : [BUILDING_TARGET, BUILDING_OFFSET];
+
+// Array mode (inside building mode): four more turbines drop onto the leading edge
+function toggleArray() {
+  arrayTarget = arrayTarget ? 0 : 1;
+  zoomedIn = false;
+  updateZoomBtn();
+  const [tg, off] = zoomedOutView();
+  startCinematic({ target1: tg, ends: [off], lift: 0.2, pull: 0.15 });
+  showCaption(arrayTarget ? ARRAY_TEXT : BUILDING_TEXT);
+}
+// Zoom (any screen): close on the turbine <-> whole building. In array mode, zooming
+// out shows the whole row. Nothing else changes; the caption is left as it is.
+zoomBtn.addEventListener('click', () => {
+  zoomedIn = !zoomedIn;
+  updateZoomBtn();
+  const [tg, off] = zoomedIn ? [new THREE.Vector3(TX, HUB_Y - 0.5, 0), ZOOM_IN_OFFSET]
+                  : arrayTarget ? [ARRAY_TARGET, ARRAY_OFFSET] : [OVERVIEW_TARGET, OVERVIEW_OFFSET];
+  startCinematic({ target1: tg, ends: [off], lift: 0.05, pull: 0.05, time: ZOOM_TIME });
+});
+updateZoomBtn();
+
+function setShroud(on) {
+  shroudTarget = on ? 1 : 0;
+  shroudBtn.textContent = on ? 'Remove Hover shroud' : 'Add Hover shroud';
+  shroudBtn.classList.toggle('on', on);
+  bldBtn.hidden = !(on || inBuildingView);                      // appears once the shroud has been added
+}
+function toggleShroud() {
+  setShroud(!shroudTarget);
+  if (shroudTarget) {
+    if (!inBuildingView) {
+      startCinematic({
+        target1: new THREE.Vector3(TX, HUB_Y - 0.3, 0),
+        ends: [new THREE.Vector3(-9, 2.4, 6.5), new THREE.Vector3(-9, 2.4, -6.5)] });
+      zoomedIn = true; updateZoomBtn();                          // that move ends close on the turbine
+    }
+    showCaption(SHROUD_TEXT);
+  } else {
+    if (cine && !inBuildingView) stopCinematic();
+    hideCaption();
+  }
+}
+function toggleBuilding() {
+  inBuildingView = !inBuildingView;
+  zoomedIn = !inBuildingView;                                    // building view is zoomed out; turbine view is close
+  arrayTarget = 0;                                               // entering or leaving: back to a single turbine
+  updateZoomBtn();
+  bldBtn.textContent = inBuildingView ? 'Turbine view' : 'Building multiplier';
+  bldBtn.classList.toggle('on', inBuildingView);
+  moveRigTo(inBuildingView ? EDGE_TX : 0);
+  if (inBuildingView) {
+    startCinematic({ target1: BUILDING_TARGET, ends: [BUILDING_OFFSET], lift: 0.25, pull: 0.15 });
+    showCaption(BUILDING_TEXT);
+  } else {
+    startCinematic({ target1: TURBINE_TARGET, ends: [TURBINE_OFFSET], lift: 0.2, pull: 0.1 });
+    hideCaption();
+  }
+  setShroud(!!shroudTarget);                                    // refresh button visibility
+}
+
+// Stepping FORWARD (add shroud -> building multiplier -> array multiplier) always starts
+// from the zoomed-in view: if the camera is zoomed out, it first zooms in (1.5 s), then
+// that step's own cinematic runs from there. Stepping back runs straight away.
+let pendingStep = null;
+function runZoomedIn(step) {
+  if (pendingStep) return;                                       // a zoom-in is already queued
+  const tg = new THREE.Vector3(TX, HUB_Y - 0.5, 0);
+  if (zoomedIn && camera.position.distanceTo(tg) < 20) { step(); return; }
+  zoomedIn = true; updateZoomBtn();
+  pendingStep = step;
+  startCinematic({ target1: tg, ends: [ZOOM_IN_OFFSET], lift: 0.05, pull: 0.05, time: ZOOM_TIME });
+  cine.next = () => { const f = pendingStep; pendingStep = null; f(); };
+}
+shroudBtn.addEventListener('click', () => shroudTarget ? toggleShroud() : runZoomedIn(toggleShroud));
+bldBtn.addEventListener('click',    () => inBuildingView ? toggleBuilding() : runZoomedIn(toggleBuilding));
+arrayBtn.addEventListener('click',  () => arrayTarget ? toggleArray() : runZoomedIn(toggleArray));
+
+// ---- moving the turbine (rig) between the roof centre and the leading edge ----
+const RIG_TIME = 3.5;                                            // seconds
+let rigFrom = 0, rigTo = 0, rigT = 1;
+function moveRigTo(x) { rigFrom = TX; rigTo = x; rigT = 0; }
+function updateRig(realDt) {
+  if (rigT >= 1) return;
+  rigT = Math.min(1, rigT + realDt / RIG_TIME);
+  const e = rigT * rigT * (3 - 2 * rigT);
+  TX = rigFrom + (rigTo - rigFrom) * e;
+  rig.position.x = TX;
+}
+
+// Array animation: the extra turbines drop in from above, inner pair first (and lift away in reverse)
+const ARRAY_TIME = 3.0;                                          // seconds
+function updateArray(realDt) {
+  const step = realDt / ARRAY_TIME;
+  arrayAmt = arrayTarget ? Math.min(1, arrayAmt + step) : Math.max(0, arrayAmt - step);
+  for (const r of extraRigs) {
+    const order = Math.round(Math.abs(r.userData.z) / ARRAY_SPACING) - 1;    // 0 = inner pair, 1 = outer pair
+    const k = Math.min(1, Math.max(0, arrayAmt * 1.5 - order * 0.5));
+    const e = 1 - Math.pow(1 - k, 3);                             // ease out: lands gently
+    r.visible = k > 0;
+    r.position.y = (1 - e) * 25;
+  }
+}
+
+// Shroud animation: drops in from above while fading in (and the reverse)
+function updateShroud(realDt) {
+  const step = realDt / 1.2;                                     // 1.2 s transition
+  shroudAmt = shroudTarget ? Math.min(1, shroudAmt + step) : Math.max(0, shroudAmt - step);
+  const e = shroudAmt * shroudAmt * (3 - 2 * shroudAmt);         // smoothstep easing
+  for (const sg of allShrouds) { sg.visible = shroudAmt > 0; sg.position.y = (1 - e) * 5; }
+  const solid = shroudAmt >= 1;
+  for (const m of shroudMats) { m.transparent = !solid; m.opacity = e; m.depthWrite = e > 0.6; }
+}
+
+// ---------------------------------------------------------------------
+// Cinematic camera moves (8 s). Any drag/zoom interrupts and hands control
+// back from wherever the camera is. Captions stay until closed with the x.
+// ---------------------------------------------------------------------
+const caption = document.getElementById('caption');
+let cine = null;                                                 // null when no camera move is running
+
+function showCaption(html) {
+  document.getElementById('captionText').innerHTML = html;
+  caption.classList.add('show');
+}
+function hideCaption() { caption.classList.remove('show'); }
+document.getElementById('captionClose').addEventListener('click', hideCaption);
+
+function stopCinematic() {
+  controls.target.copy(cine.cur);
+  const next = cine.next;                                        // a queued step (see runZoomedIn) still runs
+  cine = null;
+  if (next) next();
+}
+
+// target1: where the camera ends up looking. ends: candidate camera offsets from
+// target1 (the one needing the biggest swing is used). lift / pull: how much the
+// camera rises / backs off mid-move.
+function startCinematic({ target1, ends, lift = 0.35, pull = 0.4, time = 8 }) {
+  const target0 = controls.target.clone();
+  const s0 = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target0));
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  let best = null;
+  for (const end of ends) {
+    const s1 = new THREE.Spherical().setFromVector3(end.clone());
+    const dTheta = wrap(s1.theta - s0.theta);
+    if (!best || Math.abs(dTheta) > Math.abs(best.dTheta)) best = { s1, dTheta };
+  }
+  cine = { t: 0, time, lift, pull, target0, target1: target1.clone(), s0, s1: best.s1, dTheta: best.dTheta, cur: target0.clone() };
+  controls.autoRotate = false;
+}
+
+function updateCinematic(realDt) {
+  cine.t += realDt;
+  const u = Math.min(1, cine.t / cine.time);
+  const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;   // ease in-out (cubic)
+  const arc = Math.sin(Math.PI * u);                             // 0 -> 1 -> 0 over the move
+  const { s0, s1 } = cine;
+  const theta  = s0.theta + cine.dTheta * e;
+  const phi    = THREE.MathUtils.clamp(s0.phi + (s1.phi - s0.phi) * e - cine.lift * arc, 0.2, Math.PI * 0.49);
+  const radius = (s0.radius + (s1.radius - s0.radius) * e) * (1 + cine.pull * arc);
+  cine.cur.lerpVectors(cine.target0, cine.target1, e);
+  camera.position.setFromSphericalCoords(radius, phi, theta).add(cine.cur);
+  camera.lookAt(cine.cur);
+  if (u >= 1) stopCinematic();
+}
+
+// URL options: index.html?shroud starts with the shroud on; ?building jumps to the building view
+const params = new URLSearchParams(location.search);
+if (params.has('shroud')) { setShroud(true); shroudAmt = 1; }
+if (params.has('building')) {
+  inBuildingView = true;
+  TX = EDGE_TX; rig.position.x = TX;
+  bldBtn.textContent = 'Turbine view'; bldBtn.classList.add('on');
+  setShroud(!!shroudTarget);
+  controls.target.copy(BUILDING_TARGET);
+  camera.position.copy(BUILDING_TARGET).add(BUILDING_OFFSET);
+  controls.autoRotate = false;
+  if (params.has('array')) {
+    arrayTarget = 1; arrayAmt = 1; updateArray(0);
+    controls.target.copy(ARRAY_TARGET);
+    camera.position.copy(ARRAY_TARGET).add(ARRAY_OFFSET);
+  }
+  zoomedIn = false;
+  updateZoomBtn();
+  showCaption(arrayTarget ? ARRAY_TEXT : BUILDING_TEXT);
+}
+
+const rose = document.getElementById('rose');
+const clock = new THREE.Clock();
+let t = 3;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const realDt = Math.min(clock.getDelta(), 0.05);
+  const dt = realDt * SLOWMO;
+  updateShroud(realDt);
+  updateRig(realDt);
+  updateArray(realDt);
+  t += dt;
+
+  rotor.rotation.y += OMEGA * dt;
+  for (const r of extraRigs) r.userData.rotor.rotation.y += r.userData.spin * OMEGA * dt;
+
+  // windsock: points downwind (+x), flutters and droops a little
+  sockPivot.rotation.y = 0.10 * Math.sin(3.1 * t) + 0.05 * Math.sin(7.7 * t);
+  sockPivot.rotation.z = -0.10 + 0.06 * Math.sin(4.3 * t);
+
+  updateStreaks(dt, t);
+
+  if (cine) updateCinematic(realDt);
+  else controls.update();
+  const tgt = cine ? cine.cur : controls.target;                 // compass follows the camera's heading
+  const az = Math.atan2(camera.position.x - tgt.x, camera.position.z - tgt.z);
+  rose.setAttribute('transform', `rotate(${THREE.MathUtils.radToDeg(az)})`);
+
+  composer.render();
+}
+animate();
+</script>
+</body>
+</html>
